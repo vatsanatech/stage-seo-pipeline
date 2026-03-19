@@ -1,0 +1,17 @@
+{
+  "name": "seo-impact-tracker",
+  "version": "1.0.0",
+  "description": "SEO fix impact tracker with ROI measurement - pulls GSC data, compares before/after metrics, sends Slack alerts",
+  "main": "src/index.js",
+  "scripts": {
+    "track": "node src/index.js track",
+    "report": "node src/index.js report",
+    "register": "node src/index.js register",
+    "check-ready": "node src/index.js check-ready",
+    "test": "node test/run.js"
+  },
+  "keywords": ["seo", "gsc", "impact-tracking", "roi"],
+  "author": "Paperclip SEO Impact Tracker Agent",
+  "license": "ISC",
+  "type": "commonjs"
+}

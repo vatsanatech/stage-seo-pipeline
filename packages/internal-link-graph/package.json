@@ -1,0 +1,21 @@
+{
+  "name": "internal-link-graph",
+  "version": "1.0.0",
+  "description": "Internal link graph analyzer with PageRank, HITS, orphan detection, and link suggestions",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "node --test tests/*.test.js",
+    "analyze": "node dist/cli.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.0",
+    "cheerio": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

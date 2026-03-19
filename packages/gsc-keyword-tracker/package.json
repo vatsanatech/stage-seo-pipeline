@@ -1,0 +1,20 @@
+{
+  "name": "gsc-keyword-tracker",
+  "version": "1.0.0",
+  "description": "Google Search Console keyword tracker with dialect detection for Stage OTT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "track": "node dist/cli.js",
+    "test": "node --test dist/tests/*.test.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

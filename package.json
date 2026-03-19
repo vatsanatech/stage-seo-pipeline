@@ -1,0 +1,20 @@
+{
+  "name": "stage-seo-pipeline",
+  "version": "1.0.0",
+  "description": "Stage.in SEO automation pipeline — monorepo for all SEO agents",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tarunsahnan/stage-seo-pipeline"
+  },
+  "keywords": ["seo", "stage.in", "automation", "pipeline"],
+  "author": "Stage SEO Team",
+  "license": "PRIVATE"
+}

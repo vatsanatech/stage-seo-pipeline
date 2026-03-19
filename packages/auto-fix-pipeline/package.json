@@ -1,0 +1,20 @@
+{
+  "name": "auto-fix-pipeline",
+  "version": "1.0.0",
+  "description": "Auto-fix pipeline: generate TS code fixes, validate with tsc, create PRs",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "run-pipeline": "node dist/pipeline/runner.js",
+    "test": "node --test dist/tests/*.test.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "typescript": "^5.9.3"
+  }
+}

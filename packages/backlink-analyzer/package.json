@@ -1,0 +1,20 @@
+{
+  "name": "backlink-analyzer",
+  "version": "1.0.0",
+  "description": "Backlink analysis via CommonCrawl Index API for Stage OTT - competitor profiles and link building opportunities",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "analyze": "node dist/cli.js",
+    "test": "node --test dist/tests/*.test.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

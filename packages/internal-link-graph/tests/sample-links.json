@@ -1,0 +1,10 @@
+[
+  { "sourceUrl": "https://example.com/", "targetUrl": "https://example.com/products", "anchorText": "Products", "crawledAt": "2026-03-18" },
+  { "sourceUrl": "https://example.com/", "targetUrl": "https://example.com/about", "anchorText": "About Us", "crawledAt": "2026-03-18" },
+  { "sourceUrl": "https://example.com/", "targetUrl": "https://example.com/blog", "anchorText": "Blog", "crawledAt": "2026-03-18" },
+  { "sourceUrl": "https://example.com/products", "targetUrl": "https://example.com/", "anchorText": "Home", "crawledAt": "2026-03-18" },
+  { "sourceUrl": "https://example.com/products", "targetUrl": "https://example.com/about", "anchorText": "About", "crawledAt": "2026-03-18" },
+  { "sourceUrl": "https://example.com/blog", "targetUrl": "https://example.com/", "anchorText": "Home", "crawledAt": "2026-03-18" },
+  { "sourceUrl": "https://example.com/blog", "targetUrl": "https://example.com/blog/seo-tips", "anchorText": "SEO Tips", "crawledAt": "2026-03-18" },
+  { "sourceUrl": "https://example.com/blog/seo-tips", "targetUrl": "https://example.com/blog", "anchorText": "Back to Blog", "crawledAt": "2026-03-18" }
+]
