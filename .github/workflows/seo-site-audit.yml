@@ -1,0 +1,110 @@
+name: SEO Site Audit
+
+on:
+  schedule:
+    - cron: '0 5 1,15 * *'  # 1st and 15th of every month, 10:30 AM IST
+  workflow_dispatch:
+
+jobs:
+  site-audit:
+    name: Trigger SEO Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create Paperclip audit task & wake agent
+        env:
+          PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
+          PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          COMPANY_ID="f0a0b0c0-0001-4000-8000-000000000001"
+          AGENT_ID="f1000001-0002-4000-8000-000000000001"
+
+          DESC_JSON=$(node -e "
+            const date = '${DATE}';
+            const desc = [
+              '## Full SEO Audit — stage.in (' + date + ')',
+              '',
+              '### Step 1: Crawl & Audit',
+              'Run a full SEO audit on https://stage.in covering all pages. Check:',
+              '',
+              '**Technical SEO:**',
+              '- Missing/duplicate title tags',
+              '- Missing/duplicate meta descriptions',
+              '- Missing canonical URLs',
+              '- Broken links (4xx, 5xx)',
+              '- Missing alt tags on images',
+              '- Missing Open Graph / Twitter Card meta tags',
+              '- Missing or incorrect hreflang tags',
+              '- Missing robots.txt directives',
+              '- Missing or incorrect sitemap.xml',
+              '- Page load speed issues',
+              '- Mobile usability issues',
+              '- Missing structured data (JSON-LD schema)',
+              '',
+              '**Content SEO:**',
+              '- Thin content pages (< 300 words)',
+              '- Duplicate content across pages',
+              '- Missing H1 tags or multiple H1s',
+              '- Keyword cannibalization',
+              '- Missing breadcrumbs',
+              '',
+              '**Dialects to cover:**',
+              '- /hi/haryanvi/*',
+              '- /hi/rajasthani/*',
+              '- /hi/bhojpuri/*',
+              '- /hi/gujarati/*',
+              '- Homepage /',
+              '- /movies, /shows, /watch pages',
+              '',
+              '### Step 2: Create issues list',
+              'After audit, post a comment on this issue with a full list of all problems found:',
+              '- Each issue with severity (critical/high/medium/low)',
+              '- Which URL(s) are affected',
+              '- What the fix should be',
+              '',
+              'Format:',
+              '```',
+              '| # | Issue | Severity | URLs affected | Fix |',
+              '|---|-------|----------|---------------|-----|',
+              '| 1 | Missing meta description | high | /hi/haryanvi/movies | Add description in generateMetadata |',
+              '```',
+              '',
+              '### Step 3: Fix all issues in one PR',
+              '1. git checkout main && git pull origin main',
+              '2. Create branch: \`fix/seo-audit-' + date + '\`',
+              '3. Fix ALL issues found in the audit',
+              '4. Run \`npx prettier --write .\` on changed files',
+              '5. Commit using conventional commits: \`fix(seo): full site audit fixes ' + date + '\`',
+              '6. Raise PR to vatsanatech/stage-webapp against main',
+              '7. Do NOT add any markdown/docs/report files — only code fixes',
+              '',
+              '### Step 4: Slack notification',
+              'After PR is raised, send Slack message via SLACK_WEBHOOK_URL:',
+              '',
+              'curl -X POST \"$SLACK_WEBHOOK_URL\" -H \"Content-Type: application/json\" -d \\'{\"text\": \"*SEO Site Audit — ' + date + '*\\\\nHi <@U07A91AB7GW>, full site audit completed. PR: <PR_URL>\\\\n\\\\n*Issues found:* <count> issues\\\\n*Critical:* <count> | *High:* <count> | *Medium:* <count>\"}\\' ',
+              '',
+              'CRITICAL: Use <@U07A91AB7GW> exactly as written for Slack mention.',
+            ].join('\\n');
+            console.log(JSON.stringify(desc));
+          ")
+
+          curl -s -X POST \
+            "$PAPERCLIP_API_URL/api/companies/$COMPANY_ID/issues" \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"title\": \"SEO Site Audit — stage.in (${DATE})\",
+              \"description\": $DESC_JSON,
+              \"status\": \"todo\",
+              \"priority\": \"critical\",
+              \"assigneeAgentId\": \"$AGENT_ID\"
+            }" && echo "Audit issue created" || echo "Issue creation failed"
+
+          curl -s -X POST \
+            "$PAPERCLIP_API_URL/api/agents/$AGENT_ID/wakeup" \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"reason\": \"SEO Site Audit ${DATE}\"}" \
+            && echo "Agent wakeup sent" || echo "Wakeup failed"
