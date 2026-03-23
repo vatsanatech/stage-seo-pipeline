@@ -22,7 +22,7 @@ jobs:
         working-directory: packages/gsc-keyword-tracker
         run: npm install && npm run build
 
-      - name: Fetch keywords from GSC & analyze trends
+      - name: Fetch keywords from GSC
         id: analyze
         working-directory: packages/gsc-keyword-tracker
         env:
@@ -32,10 +32,8 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           echo "date=${DATE}" >> $GITHUB_OUTPUT
 
-          # Fetch from GSC API and analyze trends
           node dist/cli.js track --site "$GSC_SITE_URL" --db gsc_keywords.db 2>&1 | tee /tmp/output.txt
 
-          # Extract stats
           TOTAL=$(grep -oP 'Total keywords: \K[0-9]+' /tmp/output.txt || echo "0")
           RISING=$(grep -oP 'Rising: \K[0-9]+' /tmp/output.txt | head -1 || echo "0")
           NEW_KW=$(grep -oP 'New: \K[0-9]+' /tmp/output.txt | head -1 || echo "0")
@@ -43,20 +41,16 @@ jobs:
           echo "rising=${RISING}" >> $GITHUB_OUTPUT
           echo "new_kw=${NEW_KW}" >> $GITHUB_OUTPUT
 
-          # Get top rising per dialect using CLI (reads GSC data already fetched)
-          echo "--- HARYANVI RISING ---" > /tmp/keywords.txt
-          node dist/cli.js trends --db gsc_keywords.db --direction rising --dialect haryanvi --limit 10 2>&1 >> /tmp/keywords.txt
-          echo "--- RAJASTHANI RISING ---" >> /tmp/keywords.txt
-          node dist/cli.js trends --db gsc_keywords.db --direction rising --dialect rajasthani --limit 10 2>&1 >> /tmp/keywords.txt
-          echo "--- BHOJPURI RISING ---" >> /tmp/keywords.txt
-          node dist/cli.js trends --db gsc_keywords.db --direction rising --dialect bhojpuri --limit 10 2>&1 >> /tmp/keywords.txt
-          echo "--- GUJARATI RISING ---" >> /tmp/keywords.txt
-          node dist/cli.js trends --db gsc_keywords.db --direction rising --dialect gujarati --limit 10 2>&1 >> /tmp/keywords.txt
-          echo "--- NEW KEYWORDS ---" >> /tmp/keywords.txt
-          node dist/cli.js trends --db gsc_keywords.db --direction new --limit 15 2>&1 >> /tmp/keywords.txt
+          # All rising keywords (all dialects combined)
+          node dist/cli.js trends --db gsc_keywords.db --direction rising --limit 50 2>&1 > /tmp/rising.txt
+          # All new keywords
+          node dist/cli.js trends --db gsc_keywords.db --direction new --limit 30 2>&1 > /tmp/new.txt
 
-          cat /tmp/keywords.txt
-          echo "Keywords extracted from GSC data"
+          echo "=== RISING ===" > /tmp/all_keywords.txt
+          cat /tmp/rising.txt >> /tmp/all_keywords.txt
+          echo "" >> /tmp/all_keywords.txt
+          echo "=== NEW ===" >> /tmp/all_keywords.txt
+          cat /tmp/new.txt >> /tmp/all_keywords.txt
 
       - name: Create Paperclip issue & wake agent
         env:
@@ -67,61 +61,71 @@ jobs:
           TOTAL=${{ steps.analyze.outputs.total }}
           RISING=${{ steps.analyze.outputs.rising }}
           NEW_KW=${{ steps.analyze.outputs.new_kw }}
-
           COMPANY_ID="f0a0b0c0-0001-4000-8000-000000000001"
           AGENT_ID="f1000001-0003-4000-8000-000000000001"
 
-          # Read GSC keyword data
-          KEYWORDS_DATA=$(cat /tmp/keywords.txt)
+          KEYWORDS_DATA=$(cat /tmp/all_keywords.txt)
 
-          # Build description
-          read -r -d '' DESCRIPTION << 'DESCEOF' || true
-          ## Weekly Keyword Analysis — DATE_PLACEHOLDER
+          DESC_JSON=$(node -e "
+            const date = '${DATE}';
+            const total = '${TOTAL}';
+            const rising = '${RISING}';
+            const newKw = '${NEW_KW}';
+            const kw = require('fs').readFileSync('/tmp/all_keywords.txt', 'utf8');
 
-          Stats: TOTAL_PLACEHOLDER total | RISING_PLACEHOLDER rising | NEW_PLACEHOLDER new
+            const desc = [
+              '## GSC Keywords — ' + date,
+              '',
+              'Stats: ' + total + ' total | ' + rising + ' rising | ' + newKw + ' new',
+              '',
+              '## All trending keywords from Google Search Console',
+              '',
+              '\`\`\`',
+              kw.trim(),
+              '\`\`\`',
+              '',
+              '## Your job',
+              '',
+              'Update \`src/config/seo-keywords.ts\` in vatsanatech/stage-webapp and raise a PR.',
+              '',
+              '### Rules',
+              '- Look at each keyword and decide which page(s) it belongs to: homepage (brand), movies, shows, or multiple',
+              '- A keyword CAN go on multiple pages if relevant (e.g. \"naate web series\" → both movies and shows)',
+              '- Skip vulgar/adult/inappropriate keywords — do not include them',
+              '- Group keywords by dialect (haryanvi, rajasthani, bhojpuri, gujarati)',
+              '- Homepage only gets brand/generic keywords (stage app, stage ott, etc)',
+              '- Use the EXACT keywords from GSC data above, do not fabricate',
+              '- ONLY update src/config/seo-keywords.ts — no other files, no docs, no .md reports',
+              '- Do NOT add any markdown/report files to the PR',
+              '',
+              '### File structure to follow',
+              '```typescript',
+              'const KEYWORDS: Record<string, { brand: string[]; movies: string[]; shows: string[] }> = {',
+              '  haryanvi: { brand: [...], movies: [...], shows: [...] },',
+              '  rajasthani: { ... },',
+              '  ...',
+              '};',
+              '```',
+            ].join('\\n');
 
-          ## ACTUAL Trending Keywords from Google Search Console
+            console.log(JSON.stringify(desc));
+          ")
 
-          KEYWORDS_PLACEHOLDER
-
-          ## Instructions for PR
-
-          1. Create `src/config/seo-keywords.ts` with the EXACT keywords listed above
-          2. **Homepage** (`src/app/[lang]/[dialect]/page.tsx`) → ONLY generic brand keywords (like "stage app", "haryanvi shows online", "rajasthani entertainment"). Do NOT put movie/film/content-specific keywords on homepage
-          3. **Content detail pages** → Put trending content keywords (movies, shows, naate etc) on watch/movies/shows pages ONLY
-          4. Create report at `seo/keyword-analysis/DATE_PLACEHOLDER.md` with same GSC data
-          5. Raise PR to vatsanatech/stage-webapp
-          6. seo-keywords.ts and .md report MUST have the SAME keywords — both from GSC data above
-
-          IMPORTANT: Use ONLY keywords from the GSC data above. Do NOT fabricate or guess keywords.
-          DESCEOF
-
-          DESCRIPTION="${DESCRIPTION//DATE_PLACEHOLDER/$DATE}"
-          DESCRIPTION="${DESCRIPTION//TOTAL_PLACEHOLDER/$TOTAL}"
-          DESCRIPTION="${DESCRIPTION//RISING_PLACEHOLDER/$RISING}"
-          DESCRIPTION="${DESCRIPTION//NEW_PLACEHOLDER/$NEW_KW}"
-          DESCRIPTION="${DESCRIPTION//KEYWORDS_PLACEHOLDER/$KEYWORDS_DATA}"
-
-          # JSON encode the description
-          DESC_JSON=$(node -e "console.log(JSON.stringify(process.argv[1]))" "$DESCRIPTION")
-
-          # Create issue
           curl -s -X POST \
             "$PAPERCLIP_API_URL/api/companies/$COMPANY_ID/issues" \
             -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
             -H "Content-Type: application/json" \
             -d "{
-              \"title\": \"Weekly keyword analysis ${DATE} — ${TOTAL} tracked, ${RISING} rising, ${NEW_KW} new\",
+              \"title\": \"Weekly keywords ${DATE} — ${TOTAL} tracked, ${RISING} rising, ${NEW_KW} new\",
               \"description\": $DESC_JSON,
               \"status\": \"todo\",
               \"priority\": \"high\",
               \"assigneeAgentId\": \"$AGENT_ID\"
-            }" && echo "Issue created" || echo "Issue creation failed (non-critical)"
+            }" && echo "Issue created" || echo "Issue creation failed"
 
-          # Wake agent
           curl -s -X POST \
             "$PAPERCLIP_API_URL/api/agents/$AGENT_ID/wakeup" \
             -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{\"reason\": \"Weekly keyword analysis ${DATE} — new task assigned\"}" \
-            && echo "Agent wakeup sent" || echo "Wakeup failed (non-critical)"
+            -d "{\"reason\": \"Weekly keywords ${DATE}\"}" \
+            && echo "Agent wakeup sent" || echo "Wakeup failed"
