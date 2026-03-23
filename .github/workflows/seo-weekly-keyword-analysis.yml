@@ -1,0 +1,227 @@
+name: SEO Weekly Keyword Analysis
+
+on:
+  schedule:
+    # Run every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (skip PR creation, just run analysis)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  keyword-analysis:
+    name: Run Keyword Analysis & Raise PR to stage-webapp
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout stage-seo-pipeline
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/gsc-keyword-tracker/package-lock.json
+
+      - name: Install gsc-keyword-tracker dependencies
+        working-directory: packages/gsc-keyword-tracker
+        run: npm ci
+
+      - name: Build gsc-keyword-tracker
+        working-directory: packages/gsc-keyword-tracker
+        run: npm run build
+
+      - name: Run keyword tracking (GSC data fetch + trend analysis)
+        id: track
+        working-directory: packages/gsc-keyword-tracker
+        env:
+          GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          GSC_SERVICE_ACCOUNT_KEY: ${{ secrets.GSC_SERVICE_ACCOUNT_KEY }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          echo "date=${DATE}" >> $GITHUB_OUTPUT
+
+          echo "Running keyword tracker..."
+          node dist/cli.js track --site "$GSC_SITE_URL" --db gsc_keywords.db 2>&1 | tee /tmp/tracker_output.txt
+
+          # Extract stats
+          TOTAL=$(grep -oP 'Total keywords: \K[0-9]+' /tmp/tracker_output.txt || echo "0")
+          RISING=$(grep -oP 'Rising: \K[0-9]+' /tmp/tracker_output.txt | head -1 || echo "0")
+          DECLINING=$(grep -oP 'Declining: \K[0-9]+' /tmp/tracker_output.txt | head -1 || echo "0")
+          NEW_KW=$(grep -oP 'New: \K[0-9]+' /tmp/tracker_output.txt | head -1 || echo "0")
+          LOST=$(grep -oP 'Lost: \K[0-9]+' /tmp/tracker_output.txt | head -1 || echo "0")
+
+          echo "total=${TOTAL}" >> $GITHUB_OUTPUT
+          echo "rising=${RISING}" >> $GITHUB_OUTPUT
+          echo "declining=${DECLINING}" >> $GITHUB_OUTPUT
+          echo "new_kw=${NEW_KW}" >> $GITHUB_OUTPUT
+          echo "lost=${LOST}" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "=== Summary ==="
+          echo "Total: ${TOTAL} | Rising: ${RISING} | Declining: ${DECLINING} | New: ${NEW_KW} | Lost: ${LOST}"
+
+      - name: Get top rising keywords
+        id: trends
+        working-directory: packages/gsc-keyword-tracker
+        run: |
+          echo "=== Top Rising ==="
+          node dist/cli.js trends --db gsc_keywords.db --direction rising --limit 10 2>&1 | tee /tmp/rising.txt
+
+          echo "=== Top Declining ==="
+          node dist/cli.js trends --db gsc_keywords.db --direction declining --limit 10 2>&1 | tee /tmp/declining.txt
+
+          echo "=== New Keywords ==="
+          node dist/cli.js trends --db gsc_keywords.db --direction new --limit 15 2>&1 | tee /tmp/new_kw.txt
+
+          # Extract top rising keyword for PR title
+          TOP_RISING=$(grep -oP '↑ \K[^\[]+' /tmp/rising.txt | head -1 | xargs || echo "")
+          echo "top_rising=${TOP_RISING}" >> $GITHUB_OUTPUT
+
+      - name: Analyze and add net-new keywords to SerpBear
+        if: ${{ env.SERPBEAR_URL != '' }}
+        working-directory: packages/gsc-keyword-tracker
+        env:
+          GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          GSC_SERVICE_ACCOUNT_KEY: ${{ secrets.GSC_SERVICE_ACCOUNT_KEY }}
+          SERPBEAR_URL: ${{ secrets.SERPBEAR_URL }}
+          SERPBEAR_API_KEY: ${{ secrets.SERPBEAR_API_KEY }}
+          SERPBEAR_DOMAIN: ${{ secrets.SERPBEAR_DOMAIN }}
+        run: |
+          echo "Running SerpBear keyword sync..."
+          node dist/cli.js analyze \
+            --site "$GSC_SITE_URL" \
+            --domain "${SERPBEAR_DOMAIN:-stage.in}" \
+            --max 50 \
+            --min-clicks 5 \
+            --db gsc_keywords.db 2>&1 | tee /tmp/analyze_output.txt || true
+
+          ADDED=$(grep -oP 'Added: \K[0-9]+' /tmp/analyze_output.txt || echo "0")
+          echo "serpbear_added=${ADDED}" >> $GITHUB_OUTPUT
+        id: serpbear
+
+      - name: Checkout stage-webapp
+        uses: actions/checkout@v4
+        with:
+          repository: vatsanatech/stage-webapp
+          token: ${{ secrets.GH_PAT }}
+          path: stage-webapp
+
+      - name: Generate keyword analysis report
+        run: |
+          DATE=${{ steps.track.outputs.date }}
+          mkdir -p stage-webapp/seo/keyword-analysis
+
+          RISING_BLOCK=$(cat /tmp/rising.txt)
+          DECLINING_BLOCK=$(cat /tmp/declining.txt)
+          NEW_BLOCK=$(cat /tmp/new_kw.txt)
+
+          cat > "stage-webapp/seo/keyword-analysis/${DATE}.md" << 'HEREDOC_END'
+# Weekly Keyword Analysis — DATE_PLACEHOLDER
+
+**Generated by:** GitHub Actions / gsc-keyword-tracker
+**Data source:** Google Search Console (sc-domain:stage.in), 14-day rolling window
+
+---
+
+## Summary
+
+| Metric | Count |
+|--------|-------|
+| Total keywords tracked | TOTAL_PLACEHOLDER |
+| Rising ↑ | RISING_PLACEHOLDER |
+| Declining ↓ | DECLINING_PLACEHOLDER |
+| New ★ | NEW_PLACEHOLDER |
+| Lost ✗ | LOST_PLACEHOLDER |
+
+HEREDOC_END
+
+          # Replace placeholders
+          sed -i "s/DATE_PLACEHOLDER/${DATE}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
+          sed -i "s/TOTAL_PLACEHOLDER/${{ steps.track.outputs.total }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
+          sed -i "s/RISING_PLACEHOLDER/${{ steps.track.outputs.rising }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
+          sed -i "s/DECLINING_PLACEHOLDER/${{ steps.track.outputs.declining }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
+          sed -i "s/NEW_PLACEHOLDER/${{ steps.track.outputs.new_kw }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
+          sed -i "s/LOST_PLACEHOLDER/${{ steps.track.outputs.lost }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
+
+          # Append trend details
+          cat >> "stage-webapp/seo/keyword-analysis/${DATE}.md" << EOF
+
+## Top Rising Keywords
+
+\`\`\`
+$(cat /tmp/rising.txt)
+\`\`\`
+
+## Top Declining Keywords
+
+\`\`\`
+$(cat /tmp/declining.txt)
+\`\`\`
+
+## New Keywords (First Appearance)
+
+\`\`\`
+$(cat /tmp/new_kw.txt)
+\`\`\`
+
+---
+*Generated automatically by [SEO Weekly Keyword Analysis workflow](https://github.com/tarun-stage/stage-seo-pipeline/actions/workflows/seo-weekly-keyword-analysis.yml)*
+EOF
+
+      - name: Create PR branch and raise PR
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        working-directory: stage-webapp
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          DATE=${{ steps.track.outputs.date }}
+          BRANCH="chore/seo-weekly-keyword-analysis-${DATE}"
+
+          git config user.email "paperclip-seo@stage.in"
+          git config user.name "Paperclip SEO Agent"
+
+          git checkout -b "${BRANCH}"
+          git add seo/keyword-analysis/
+          git diff --staged --stat
+
+          git commit -m "chore(seo): weekly keyword analysis - ${DATE}
+
+          - Total keywords tracked: ${{ steps.track.outputs.total }}
+          - Rising: ${{ steps.track.outputs.rising }} | Declining: ${{ steps.track.outputs.declining }}
+          - New: ${{ steps.track.outputs.new_kw }} | Lost: ${{ steps.track.outputs.lost }}
+
+          Co-Authored-By: Paperclip <noreply@paperclip.ing>"
+
+          git push origin "${BRANCH}"
+
+          gh pr create \
+            --repo vatsanatech/stage-webapp \
+            --title "chore(seo): weekly keyword analysis - ${DATE}" \
+            --head "${BRANCH}" \
+            --base main \
+            --body "## Weekly Keyword Analysis — ${DATE}
+
+          Auto-generated by the SEO pipeline. Data from Google Search Console (14-day rolling window).
+
+          ### Summary
+          | Metric | Count |
+          |--------|-------|
+          | Total keywords | ${{ steps.track.outputs.total }} |
+          | Rising ↑ | ${{ steps.track.outputs.rising }} |
+          | Declining ↓ | ${{ steps.track.outputs.declining }} |
+          | New ★ | ${{ steps.track.outputs.new_kw }} |
+          | Lost ✗ | ${{ steps.track.outputs.lost }} |
+
+          Full report: \`seo/keyword-analysis/${DATE}.md\`
+
+          ---
+          _Generated by [SEO Weekly Keyword Analysis](https://github.com/tarun-stage/stage-seo-pipeline/actions/workflows/seo-weekly-keyword-analysis.yml)_"
