@@ -115,14 +115,11 @@ jobs:
               '### After PR is raised — Slack notification',
               'After creating the PR, use curl to post to Slack via SLACK_WEBHOOK_URL env var:',
               '',
-              'Post a single message with this format:',
-              '```',
-              'curl -X POST \"$SLACK_WEBHOOK_URL\" \\\\',
-              '  -H \"Content-Type: application/json\" \\\\',
-              '  -d \\'{\"text\": \"*SEO Keywords Automation ' + date + '*\\\\nHi <@U07A91AB7GW>, please review this automated keywords PR: <PR_URL>\\\\n\\\\n*Top 10 trending keywords:*\\\\n1. keyword1\\\\n2. keyword2\\\\n...\"}\\' ',
-              '```',
-              'Replace <PR_URL> with actual PR link. Include top 10 rising keywords with clicks and % change.',
-              'IMPORTANT: Tag Tarun by name in the message text.',
+              'Run this EXACT curl command (replace PR_URL only):',
+              '',
+              'curl -X POST "$SLACK_WEBHOOK_URL" -H "Content-Type: application/json" -d \'{"text": "*SEO Keywords Automation ' + date + '*\\nHi <@U07A91AB7GW>, please review this automated keywords PR: PR_URL\\n\\n*Top 10 Rising Keywords:*\\n1. keyword — clicks (+change%)\\n2. ..."}\'',
+              '',
+              'CRITICAL: You MUST use <@U07A91AB7GW> exactly as written — this is Slack mention syntax. Do NOT replace it with a name. Do NOT remove the angle brackets. Copy it literally.',
             ].join('\\n');
 
             console.log(JSON.stringify(desc));
