@@ -174,11 +174,17 @@ jobs:
         # Requires two GitHub secrets:
         #   PAPERCLIP_API_URL  — public URL of your Paperclip server (e.g. https://paperclip.yourdomain.com)
         #   PAPERCLIP_API_KEY  — agent API key (PAPERCLIP_AGENT_API_KEY from adapter config)
-        if: ${{ github.event.inputs.dry_run != 'true' && secrets.PAPERCLIP_API_URL != '' }}
+        if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
           PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
           PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
         run: |
+          # Skip if PAPERCLIP_API_URL secret is not configured
+          if [ -z "$PAPERCLIP_API_URL" ]; then
+            echo "ℹ️  PAPERCLIP_API_URL secret not set — skipping Paperclip issue creation"
+            exit 0
+          fi
+
           DATE=${{ steps.track.outputs.date }}
           COMPANY_ID="f0a0b0c0-0001-4000-8000-000000000001"
           AUTOFIX_AGENT_ID="f1000001-0005-4000-8000-000000000001"
