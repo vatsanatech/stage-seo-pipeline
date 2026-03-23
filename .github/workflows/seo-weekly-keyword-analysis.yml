@@ -14,7 +14,7 @@ on:
 
 jobs:
   keyword-analysis:
-    name: Run Keyword Analysis & Apply Keywords to stage-webapp
+    name: Run Keyword Analysis & Raise PR to stage-webapp
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -82,12 +82,12 @@ jobs:
           echo "=== New Keywords ==="
           node dist/cli.js trends --db gsc_keywords.db --direction new --limit 15 2>&1 | tee /tmp/new_kw.txt
 
-          # Extract top rising keyword for PR title
           TOP_RISING=$(grep -oP '↑ \K[^\[]+' /tmp/rising.txt | head -1 | xargs || echo "")
           echo "top_rising=${TOP_RISING}" >> $GITHUB_OUTPUT
 
       - name: Analyze and add net-new keywords to SerpBear
         if: ${{ env.SERPBEAR_URL != '' }}
+        id: serpbear
         working-directory: packages/gsc-keyword-tracker
         env:
           GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
@@ -106,7 +106,6 @@ jobs:
 
           ADDED=$(grep -oP 'Added: \K[0-9]+' /tmp/analyze_output.txt || echo "0")
           echo "serpbear_added=${ADDED}" >> $GITHUB_OUTPUT
-        id: serpbear
 
       - name: Checkout stage-webapp
         uses: actions/checkout@v4
@@ -115,13 +114,14 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: stage-webapp
 
-      - name: Apply trending keywords to webapp (seo-keywords.ts + page metadata)
+      - name: Generate seo-keywords.ts data file + latest-keywords.json trigger
         working-directory: packages/gsc-keyword-tracker
         run: |
-          echo "Updating stage-webapp with trending keywords from GSC..."
+          echo "Generating seo-keywords.ts and latest-keywords.json..."
           node scripts/update-webapp-seo.mjs \
             --db gsc_keywords.db \
             --webapp ../../stage-webapp \
+            --pipeline-root ../.. \
             --limit 10
 
       - name: Generate keyword analysis report
@@ -149,7 +149,6 @@ jobs:
 
 HEREDOC_END
 
-          # Replace placeholders
           sed -i "s/DATE_PLACEHOLDER/${DATE}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
           sed -i "s/TOTAL_PLACEHOLDER/${{ steps.track.outputs.total }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
           sed -i "s/RISING_PLACEHOLDER/${{ steps.track.outputs.rising }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
@@ -157,7 +156,6 @@ HEREDOC_END
           sed -i "s/NEW_PLACEHOLDER/${{ steps.track.outputs.new_kw }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
           sed -i "s/LOST_PLACEHOLDER/${{ steps.track.outputs.lost }}/g" "stage-webapp/seo/keyword-analysis/${DATE}.md"
 
-          # Append trend details
           cat >> "stage-webapp/seo/keyword-analysis/${DATE}.md" << EOF
 
 ## Top Rising Keywords
@@ -182,7 +180,24 @@ $(cat /tmp/new_kw.txt)
 *Generated automatically by [SEO Weekly Keyword Analysis workflow](https://github.com/vatsanatech/stage-seo-pipeline/actions/workflows/seo-weekly-keyword-analysis.yml)*
 EOF
 
-      - name: Create PR branch and raise PR
+      - name: Commit latest-keywords.json to stage-seo-pipeline main
+        # This trigger file is read by the Paperclip heartbeat agent, which creates
+        # a Paperclip issue for AutoFix Deploy Engineer to integrate the keywords.
+        run: |
+          git config user.email "paperclip-seo@stage.in"
+          git config user.name "Paperclip SEO Agent"
+          git add seo/latest-keywords.json
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(seo): update latest-keywords.json trigger - ${{ steps.track.outputs.date }}
+
+            Co-Authored-By: Paperclip <noreply@paperclip.ing>"
+            git push origin main
+            echo "✅ latest-keywords.json committed to main"
+          else
+            echo "ℹ️  No changes to latest-keywords.json"
+          fi
+
+      - name: Create PR to stage-webapp
         if: ${{ github.event.inputs.dry_run != 'true' }}
         working-directory: stage-webapp
         env:
@@ -196,14 +211,12 @@ EOF
 
           git checkout -b "${BRANCH}"
 
-          # Stage all SEO changes: report + keyword config + page metadata patch
+          # Stage: keyword data file + report (NOT page.tsx — that's handled by AutoFix Deploy Engineer via Paperclip issue)
           git add seo/keyword-analysis/
           git add src/config/seo-keywords.ts || true
-          git add src/app/\[lang\]/\[dialect\]/page.tsx || true
 
           git diff --staged --stat
 
-          # Check if there's anything to commit
           if git diff --staged --quiet; then
             echo "No changes to commit — skipping PR"
             exit 0
@@ -215,7 +228,7 @@ EOF
           - Rising: ${{ steps.track.outputs.rising }} | Declining: ${{ steps.track.outputs.declining }}
           - New: ${{ steps.track.outputs.new_kw }} | Lost: ${{ steps.track.outputs.lost }}
           - Updated src/config/seo-keywords.ts with top trending keywords per dialect
-          - Patched generateMetadata in [dialect]/page.tsx to include keywords field
+          - page.tsx integration will be handled in a separate Paperclip task
 
           Co-Authored-By: Paperclip <noreply@paperclip.ing>"
 
@@ -230,10 +243,12 @@ EOF
 
           Auto-generated by the SEO pipeline. Data from Google Search Console (14-day rolling window).
 
-          ### What changed
-          - \`src/config/seo-keywords.ts\` — updated top 10 trending keywords per dialect (haryanvi, rajasthani, bhojpuri, gujarati). These are injected into page \`<meta name=\"keywords\">\` tags automatically.
-          - \`src/app/[lang]/[dialect]/page.tsx\` — \`generateMetadata\` now returns \`keywords\` field using the new config (first-time only; idempotent on future runs).
+          ### What's in this PR
+          - \`src/config/seo-keywords.ts\` — top 10 trending keywords per dialect (haryanvi, rajasthani, bhojpuri, gujarati). Updated weekly.
           - \`seo/keyword-analysis/${DATE}.md\` — full weekly trend report.
+
+          ### Not in this PR — handled separately
+          The \`generateMetadata\` wiring in \`src/app/[lang]/[dialect]/page.tsx\` is handled by the AutoFix Deploy Engineer via a dedicated Paperclip task with full context and type-checking.
 
           ### Keyword stats
           | Metric | Count |
