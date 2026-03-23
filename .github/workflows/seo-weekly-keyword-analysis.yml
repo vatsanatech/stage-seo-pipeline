@@ -168,98 +168,23 @@ jobs:
             echo "ℹ️  No changes to latest-keywords.json"
           fi
 
-      - name: Create Paperclip task & trigger AutoFix Deploy Engineer heartbeat
-        # Requires two GitHub secrets:
-        #   PAPERCLIP_API_URL  — public URL of your Paperclip server (e.g. https://paperclip.yourdomain.com)
-        #   PAPERCLIP_API_KEY  — agent API key (PAPERCLIP_AGENT_API_KEY from adapter config)
+      - name: Trigger Paperclip agent heartbeat
         if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
           PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
           PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
         run: |
-          # Skip if PAPERCLIP_API_URL secret is not configured
           if [ -z "$PAPERCLIP_API_URL" ]; then
-            echo "ℹ️  PAPERCLIP_API_URL secret not set — skipping Paperclip issue creation"
+            echo "PAPERCLIP_API_URL not set — skipping"
             exit 0
           fi
-
-          DATE=${{ steps.track.outputs.date }}
-          COMPANY_ID="f0a0b0c0-0001-4000-8000-000000000001"
-          AUTOFIX_AGENT_ID="f1000001-0005-4000-8000-000000000001"
-          SEO_GOAL_ID="f2000001-0001-4000-8000-000000000001"
-          PARENT_ISSUE_ID="78a4044e-ebdd-4f2a-bf17-2a0fad956365"
-
-          # Read top keywords per dialect from the generated JSON
-          KEYWORDS_SUMMARY=$(node -e "
-            const fs = require('fs');
-            const d = JSON.parse(fs.readFileSync('seo/latest-keywords.json','utf8'));
-            const lines = Object.entries(d.keywords).map(([dialect, kws]) => {
-              const top = kws.slice(0,5).map(k=>k.query).join(', ');
-              return '- **' + dialect + '**: ' + top;
-            });
-            console.log(lines.join('\n'));
-          " 2>/dev/null || echo "- See seo/latest-keywords.json for details")
-
-          DESCRIPTION="## Context
-
-          The weekly GSC keyword analysis ran on **${DATE}** and identified top trending keywords per dialect.
-          \`src/config/seo-keywords.ts\` is already updated in the PR — your task is to wire it into page metadata.
-
-          ## What to do
-
-          ### 1. \`src/app/[lang]/[dialect]/page.tsx\`
-
-          Add import:
-          \`\`\`typescript
-          import { getSeoKeywords } from \"@/config/seo-keywords\";
-          \`\`\`
-
-          Add \`keywords\` field to the \`generateMetadata\` return:
-          \`\`\`typescript
-          keywords: getSeoKeywords(dialectObj.enum),
-          \`\`\`
-          (\`dialectObj.enum\` is already in scope — holds e.g. \`\"haryanvi\"\`)
-
-          ### 2. Validate
-          \`\`\`bash
-          npx tsc --noEmit
-          \`\`\`
-
-          ### 3. Commit to the existing PR branch
-          Branch: \`chore/seo-weekly-keyword-analysis-${DATE}\` in \`vatsanatech/stage-webapp\`
-
-          ## Trending keywords this week
-          ${KEYWORDS_SUMMARY}
-
-          ## Reference
-          - PR: [chore/seo-weekly-keyword-analysis-${DATE}](https://github.com/vatsanatech/stage-webapp/compare/chore/seo-weekly-keyword-analysis-${DATE})
-          - Parent: [SEO-60](/SEO/issues/SEO-60)"
-
-          # Create the Paperclip issue (this triggers wakeOnDemand for the assigned agent)
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "$PAPERCLIP_API_URL/api/companies/$COMPANY_ID/issues" \
+          # Just wake up the agent — it will pick up tasks from its inbox
+          curl -s -X POST \
+            "$PAPERCLIP_API_URL/api/agents/f1000001-0003-4000-8000-000000000001/wakeup" \
             -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"title\": \"chore(seo): integrate trending keywords into page metadata - ${DATE}\",
-              \"description\": $(echo "$DESCRIPTION" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.stringify(d)))"),
-              \"status\": \"todo\",
-              \"priority\": \"medium\",
-              \"assigneeAgentId\": \"$AUTOFIX_AGENT_ID\",
-              \"goalId\": \"$SEO_GOAL_ID\",
-              \"parentId\": \"$PARENT_ISSUE_ID\"
-            }")
-
-          HTTP_STATUS=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -1)
-
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            ISSUE_ID=$(echo "$BODY" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{ try{const p=JSON.parse(d);console.log(p.identifier||p.id);}catch(e){console.log('unknown');} })")
-            echo "✅ Paperclip issue created: $ISSUE_ID — AutoFix Deploy Engineer heartbeat will be triggered"
-          else
-            echo "⚠️  Could not create Paperclip issue (HTTP $HTTP_STATUS) — AutoFix Deploy Engineer will pick it up on next scheduled heartbeat via latest-keywords.json"
-            echo "Response: $BODY"
-          fi
+            -d '{"reason":"Weekly keyword analysis completed via GitHub Actions"}' \
+            && echo "Agent wakeup sent" || echo "Wakeup failed (non-critical)"
 
       - name: Create PR to stage-webapp
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -296,7 +221,14 @@ jobs:
 
           Co-Authored-By: Paperclip <noreply@paperclip.ing>"
 
-          git push origin "${BRANCH}"
+          git push origin "${BRANCH}" --force
+
+          # Check if PR already exists before creating
+          EXISTING_PR=$(gh pr list --repo vatsanatech/stage-webapp --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #${EXISTING_PR} already exists for branch ${BRANCH} — skipping creation"
+            exit 0
+          fi
 
           gh pr create \
             --repo vatsanatech/stage-webapp \
