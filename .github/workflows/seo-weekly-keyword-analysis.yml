@@ -29,11 +29,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: packages/gsc-keyword-tracker/package-lock.json
+          cache-dependency-path: packages/gsc-keyword-tracker/package.json
 
       - name: Install gsc-keyword-tracker dependencies
         working-directory: packages/gsc-keyword-tracker
-        run: npm ci
+        run: npm install
 
       - name: Build gsc-keyword-tracker
         working-directory: packages/gsc-keyword-tracker
