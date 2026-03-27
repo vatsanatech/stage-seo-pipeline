@@ -62,69 +62,70 @@ jobs:
           COMPANY_ID="f0a0b0c0-0001-4000-8000-000000000001"
           AGENT_ID="f1000001-0003-4000-8000-000000000001"
 
-          DESC_JSON=$(node -e "
-            const date = '${DATE}';
-            const total = '${TOTAL}';
-            const rising = '${RISING}';
-            const newKw = '${NEW_KW}';
-            const kw = require('fs').readFileSync('/tmp/all_keywords.txt', 'utf8');
+          cat > /tmp/build_desc.js << 'NODESCRIPT'
+          const date = process.env.DATE;
+          const total = process.env.TOTAL;
+          const rising = process.env.RISING;
+          const newKw = process.env.NEW_KW;
+          const kw = require('fs').readFileSync('/tmp/all_keywords.txt', 'utf8');
 
-            const desc = [
-              '## GSC Keywords — ' + date,
-              '',
-              'Stats: ' + total + ' total | ' + rising + ' rising | ' + newKw + ' new',
-              '',
-              '## All trending keywords from Google Search Console',
-              '',
-              '\`\`\`',
-              kw.trim(),
-              '\`\`\`',
-              '',
-              '## Your job',
-              '',
-              'Update ONLY \`src/config/seo-keywords.ts\` in vatsanatech/stage-webapp and raise a PR.',
-              '',
-              '### Branch setup',
-              '1. Clone vatsanatech/stage-webapp',
-              '2. Checkout main and pull latest: \`git checkout main && git pull origin main\`',
-              '3. Create a new branch FROM main: \`git checkout -b chore/seo-keywords-' + date + '\`',
-              '4. Make changes ONLY to \`src/config/seo-keywords.ts\`',
-              '5. Run \`npx prettier --write src/config/seo-keywords.ts\` to fix formatting before committing',
-              '6. Commit using conventional commits: \`chore(seo): update weekly keywords ' + date + '\`',
-              '7. Push and raise PR against main. PR title must also follow conventional commits format.',
-              '',
-              '### Rules',
-              '- Look at each keyword and decide which page(s) it belongs to: homepage (brand), movies, shows, or multiple',
-              '- A keyword CAN go on multiple pages if relevant',
-              '- Skip vulgar/adult/inappropriate keywords — do not include them',
-              '- Group keywords by dialect (haryanvi, rajasthani, bhojpuri, gujarati)',
-              '- Homepage only gets brand/generic keywords (stage app, stage ott, etc)',
-              '- Use the EXACT keywords from GSC data above, do not fabricate',
-              '- ONLY update src/config/seo-keywords.ts — NO other files',
-              '- Do NOT add any markdown, docs, or report files to the PR',
-              '- Do NOT modify page.tsx files — they already import from seo-keywords.ts',
-              '',
-              '### File structure (already exists, just update the keyword arrays)',
-              '```typescript',
-              'const KEYWORDS: Record<string, { brand: string[]; movies: string[]; shows: string[] }> = {',
-              '  haryanvi: { brand: [...], movies: [...], shows: [...] },',
-              '  rajasthani: { ... },',
-              '  ...',
-              '};',
-              '```',
-              '',
-              '### After PR is raised — Slack notification',
-              'After creating the PR, use curl to post to Slack via SLACK_WEBHOOK_URL env var:',
-              '',
-              'Run this EXACT curl command (replace PR_URL only):',
-              '',
-              'curl -X POST "$SLACK_WEBHOOK_URL" -H "Content-Type: application/json" -d \'{"text": "*SEO Keywords Automation ' + date + '*\\nHi <@U07A91AB7GW>, please review this automated keywords PR: PR_URL\\n\\n*Top 10 Rising Keywords:*\\n1. keyword — clicks (+change%)\\n2. ..."}\'',
-              '',
-              'CRITICAL: You MUST use <@U07A91AB7GW> exactly as written — this is Slack mention syntax. Do NOT replace it with a name. Do NOT remove the angle brackets. Copy it literally.',
-            ].join('\\n');
+          const desc = [
+            '## GSC Keywords — ' + date,
+            '',
+            'Stats: ' + total + ' total | ' + rising + ' rising | ' + newKw + ' new',
+            '',
+            '## All trending keywords from Google Search Console',
+            '',
+            '```',
+            kw.trim(),
+            '```',
+            '',
+            '## Your job',
+            '',
+            'Update ONLY `src/config/seo-keywords.ts` in vatsanatech/stage-webapp and raise a PR.',
+            '',
+            '### Branch setup',
+            '1. Clone vatsanatech/stage-webapp',
+            '2. Checkout main and pull latest: `git checkout main && git pull origin main`',
+            '3. Create a new branch FROM main: `git checkout -b chore/seo-keywords-' + date + '`',
+            '4. Make changes ONLY to `src/config/seo-keywords.ts`',
+            '5. Run `npx prettier --write src/config/seo-keywords.ts` to fix formatting before committing',
+            '6. Commit using conventional commits: `chore(seo): update weekly keywords ' + date + '`',
+            '7. Push and raise PR against main. PR title must also follow conventional commits format.',
+            '',
+            '### Rules',
+            '- Look at each keyword and decide which page(s) it belongs to: homepage (brand), movies, shows, or multiple',
+            '- A keyword CAN go on multiple pages if relevant',
+            '- Skip vulgar/adult/inappropriate keywords — do not include them',
+            '- Group keywords by dialect (haryanvi, rajasthani, bhojpuri, gujarati)',
+            '- Homepage only gets brand/generic keywords (stage app, stage ott, etc)',
+            '- Use the EXACT keywords from GSC data above, do not fabricate',
+            '- ONLY update src/config/seo-keywords.ts — NO other files',
+            '- Do NOT add any markdown, docs, or report files to the PR',
+            '- Do NOT modify page.tsx files — they already import from seo-keywords.ts',
+            '',
+            '### File structure (already exists, just update the keyword arrays)',
+            '```typescript',
+            'const KEYWORDS: Record<string, { brand: string[]; movies: string[]; shows: string[] }> = {',
+            '  haryanvi: { brand: [...], movies: [...], shows: [...] },',
+            '  rajasthani: { ... },',
+            '  ...',
+            '};',
+            '```',
+            '',
+            '### After PR is raised — Slack notification',
+            'After creating the PR, use curl to post to Slack via SLACK_WEBHOOK_URL env var:',
+            '',
+            'Run this EXACT curl command (replace PR_URL only):',
+            '',
+            'curl -X POST "$SLACK_WEBHOOK_URL" -H "Content-Type: application/json" -d \'{"text": "*SEO Keywords Automation ' + date + '*\\nHi <@U07A91AB7GW>, please review this automated keywords PR: PR_URL\\n\\n*Top 10 Rising Keywords:*\\n1. keyword — clicks (+change%)\\n2. ..."}\'',
+            '',
+            'CRITICAL: You MUST use <@U07A91AB7GW> exactly as written — this is Slack mention syntax. Do NOT replace it with a name. Do NOT remove the angle brackets. Copy it literally.',
+          ].join('\n');
 
-            console.log(JSON.stringify(desc));
-          ")
+          console.log(JSON.stringify(desc));
+          NODESCRIPT
+          DESC_JSON=$(DATE="${DATE}" TOTAL="${TOTAL}" RISING="${RISING}" NEW_KW="${NEW_KW}" node /tmp/build_desc.js)
 
           curl -s -X POST \
             "$PAPERCLIP_API_URL/api/companies/$COMPANY_ID/issues" \
